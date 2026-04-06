@@ -1,6 +1,6 @@
 import type { Quote, OHLCBar, MarketIndex, SearchResult, Timeframe, NewsItem, ScreenerStock, SectorPerf, FearGreed, GainersLosers, AIAnalysis, CorrelationResult, OptionFlow, CalendarEvent, PortfolioAnalytics, PortfolioPosition, HeatmapStock } from '../types';
 
-const BASE = 'http://localhost:3001';
+const BASE = import.meta.env.VITE_API_URL || 'http://localhost:3001';
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE}${path}`, options);
