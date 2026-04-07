@@ -3,7 +3,7 @@ import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import { Plus, Trash2, TrendingUp, TrendingDown, DollarSign, X, Activity } from 'lucide-react';
 import { createChart, ColorType, IChartApi } from 'lightweight-charts';
 import { api } from '../api/client';
-import { useAppStore } from '../store';
+import { usePositions } from '../hooks/usePositions';
 import type { Quote, PortfolioPosition, PortfolioAnalytics, Timeframe, OHLCBar } from '../types';
 
 const COLORS = ['#00D4FF', '#00D4AA', '#FFD700', '#FF4757', '#A855F7', '#F97316', '#EC4899', '#14B8A6', '#84CC16', '#EF4444'];
@@ -58,7 +58,7 @@ function PerformanceChart({ positions }: { positions: PortfolioPosition[] }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const [timeframe, setTimeframe] = useState<Timeframe>('1M');
-  const [benchmarkIdx, setBenchmarkIdx] = useState(0); // index into BENCHMARKS
+  const [benchmarkIdx, setBenchmarkIdx] = useState(0);
   const [loading, setLoading] = useState(false);
   const [perfData, setPerfData] = useState<PerfData | null>(null);
   const [benchData, setBenchData] = useState<PerfData | null>(null);
@@ -70,14 +70,12 @@ function PerformanceChart({ positions }: { positions: PortfolioPosition[] }) {
     setBenchData(null);
 
     try {
-      // Fetch position histories + benchmark history in parallel
       const benchSymbol = BENCHMARKS[benchmarkIdx].symbol;
       const [posResults, benchBars] = await Promise.all([
         Promise.allSettled(positions.map((p) => api.getHistory(p.symbol, tf))),
         api.getHistory(benchSymbol, tf).catch(() => [] as OHLCBar[]),
       ]);
 
-      // ── Build portfolio value series ──────────────────────────
       let baseBars: OHLCBar[] = [];
       posResults.forEach((h) => {
         if (h.status === 'fulfilled' && h.value.length > baseBars.length) baseBars = h.value;
@@ -114,7 +112,6 @@ function PerformanceChart({ positions }: { positions: PortfolioPosition[] }) {
         setPerfData({ points, startValue: points[0].value, endValue: points[points.length - 1].value });
       }
 
-      // ── Build benchmark series ────────────────────────────────
       if (benchBars.length >= 2) {
         const bPoints = benchBars.map((b) => ({ time: b.time as any, value: b.close }));
         setBenchData({ points: bPoints, startValue: bPoints[0].value, endValue: bPoints[bPoints.length - 1].value });
@@ -128,7 +125,6 @@ function PerformanceChart({ positions }: { positions: PortfolioPosition[] }) {
 
   useEffect(() => { fetchAll(timeframe); }, [timeframe, fetchAll]);
 
-  // ── Render chart ─────────────────────────────────────────────
   useEffect(() => {
     if (!containerRef.current || !perfData || perfData.points.length < 2) return;
     if (chartRef.current) { chartRef.current.remove(); chartRef.current = null; }
@@ -157,11 +153,9 @@ function PerformanceChart({ positions }: { positions: PortfolioPosition[] }) {
     });
     chartRef.current = chart;
 
-    // Normalized data (both start at 100)
     const normPort = normalize(perfData.points);
     const normBench = benchData ? normalize(benchData.points) : [];
 
-    // Portfolio line
     const portSeries = chart.addLineSeries({
       color: '#00D4AA',
       lineWidth: 2,
@@ -174,7 +168,6 @@ function PerformanceChart({ positions }: { positions: PortfolioPosition[] }) {
     });
     portSeries.setData(normPort);
 
-    // Benchmark line
     if (normBench.length >= 2) {
       const benchSeries = chart.addLineSeries({
         color: '#FFD700',
@@ -190,7 +183,6 @@ function PerformanceChart({ positions }: { positions: PortfolioPosition[] }) {
       benchSeries.setData(normBench);
     }
 
-    // 100 baseline reference
     const baseLine = chart.addLineSeries({
       color: '#475569',
       lineWidth: 1,
@@ -223,7 +215,6 @@ function PerformanceChart({ positions }: { positions: PortfolioPosition[] }) {
 
   return (
     <div className="card">
-      {/* Header */}
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
         <div className="flex items-center gap-3">
           <span className="text-xs font-semibold text-slate-400 uppercase tracking-widest">Performance</span>
@@ -239,7 +230,6 @@ function PerformanceChart({ positions }: { positions: PortfolioPosition[] }) {
           )}
         </div>
         <div className="flex items-center gap-2">
-          {/* Benchmark selector */}
           <div className="flex items-center gap-0.5 bg-navy-700 rounded-lg p-0.5">
             {BENCHMARKS.map((b, i) => (
               <button key={b.symbol} onClick={() => setBenchmarkIdx(i)}
@@ -247,7 +237,6 @@ function PerformanceChart({ positions }: { positions: PortfolioPosition[] }) {
               >{b.label}</button>
             ))}
           </div>
-          {/* Timeframe */}
           <div className="flex items-center gap-0.5 bg-navy-700 rounded-lg p-0.5">
             {PERF_TIMEFRAMES.map((tf) => (
               <button key={tf} onClick={() => setTimeframe(tf)}
@@ -258,7 +247,6 @@ function PerformanceChart({ positions }: { positions: PortfolioPosition[] }) {
         </div>
       </div>
 
-      {/* Chart */}
       <div className="relative rounded overflow-hidden" style={{ minHeight: 260 }}>
         {loading && (
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-navy-800/80">
@@ -284,7 +272,6 @@ function PerformanceChart({ positions }: { positions: PortfolioPosition[] }) {
         )}
       </div>
 
-      {/* Legend with returns comparison */}
       {perfData && !loading && (
         <div className="flex items-center gap-5 mt-2 text-[10px] font-mono text-slate-500">
           <span className="flex items-center gap-1.5">
@@ -319,7 +306,7 @@ function PerformanceChart({ positions }: { positions: PortfolioPosition[] }) {
 // ─── Main Portfolio component ──────────────────────────────────────────────
 
 export default function Portfolio() {
-  const { positions, setPositions } = useAppStore();
+  const { positions, addPosition, removePosition } = usePositions();
   const [quotes, setQuotes] = useState<Record<string, Quote>>({});
   const [analytics, setAnalytics] = useState<PortfolioAnalytics | null>(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(false);
@@ -340,30 +327,20 @@ export default function Portfolio() {
     return () => clearInterval(id);
   }, [positions.length]);
 
-  // Fetch analytics
   useEffect(() => {
     if (positions.length === 0) { setAnalytics(null); return; }
     setAnalyticsLoading(true);
     api.getPortfolioAnalytics(positions).then(setAnalytics).catch(() => {}).finally(() => setAnalyticsLoading(false));
   }, [positions]);
 
-  const addPosition = () => {
+  const handleAddPosition = () => {
     const s = sym.toUpperCase().trim();
     const sh = parseFloat(shares); const pr = parseFloat(price);
     if (!s) return setFormErr('Symbol required');
     if (isNaN(sh) || sh <= 0) return setFormErr('Valid shares required');
     if (isNaN(pr) || pr <= 0) return setFormErr('Valid price required');
     setFormErr('');
-    const existing = positions.findIndex((p) => p.symbol === s);
-    if (existing >= 0) {
-      setPositions((prev) => prev.map((p, i) => {
-        if (i !== existing) return p;
-        const total = p.shares * p.avgPrice + sh * pr;
-        return { ...p, shares: p.shares + sh, avgPrice: total / (p.shares + sh) };
-      }));
-    } else {
-      setPositions((prev) => [...prev, { symbol: s, shares: sh, avgPrice: pr }]);
-    }
+    addPosition(s, sh, pr);
     setSym(''); setShares(''); setPrice(''); setShowForm(false);
   };
 
@@ -393,14 +370,12 @@ export default function Portfolio() {
       width: mcChartRef.current.clientWidth, height: 220, crosshair: { horzLine: { visible: false }, vertLine: { visible: false } },
     });
     mcInstanceRef.current = chart;
-    // Sample 50 paths for display
     const paths = analytics.monteCarlo.filter((_, i) => i % 10 === 0).slice(0, 50);
     const colors = ['#00D4AA25', '#00D4FF20', '#FFD70018', '#FF475718', '#A855F718'];
     paths.forEach((path, pi) => {
       const s = chart.addLineSeries({ color: colors[pi % colors.length], lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false });
       s.setData(path.map((v, d) => ({ time: (Date.now() / 1000 + d * 86400) as any, value: v })));
     });
-    // Median path
     const medianPath = analytics.monteCarlo[0].map((_, d) => {
       const vals = analytics.monteCarlo.map((p) => p[d]).sort((a, b) => a - b);
       return vals[Math.floor(vals.length / 2)];
@@ -423,10 +398,10 @@ export default function Portfolio() {
       {showForm && (
         <div className="card mb-6 animate-fade-in">
           <div className="flex items-center gap-3 flex-wrap">
-            <input className="input-field w-32" placeholder="Symbol" value={sym} onChange={(e) => setSym(e.target.value.toUpperCase())} onKeyDown={(e) => e.key === 'Enter' && addPosition()} />
-            <input className="input-field w-32" placeholder="Shares" type="number" min="0" step="any" value={shares} onChange={(e) => setShares(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addPosition()} />
-            <input className="input-field w-36" placeholder="Avg Price $" type="number" min="0" step="any" value={price} onChange={(e) => setPrice(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addPosition()} />
-            <button onClick={addPosition} className="btn-primary">Add</button>
+            <input className="input-field w-32" placeholder="Symbol" value={sym} onChange={(e) => setSym(e.target.value.toUpperCase())} onKeyDown={(e) => e.key === 'Enter' && handleAddPosition()} />
+            <input className="input-field w-32" placeholder="Shares" type="number" min="0" step="any" value={shares} onChange={(e) => setShares(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAddPosition()} />
+            <input className="input-field w-36" placeholder="Avg Price $" type="number" min="0" step="any" value={price} onChange={(e) => setPrice(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAddPosition()} />
+            <button onClick={handleAddPosition} className="btn-primary">Add</button>
             <button onClick={() => setShowForm(false)} className="btn-ghost"><X size={14} /></button>
           </div>
           {formErr && <p className="text-accent-red text-xs mt-2 font-mono">{formErr}</p>}
@@ -439,7 +414,6 @@ export default function Portfolio() {
         </div>
       ) : (
         <>
-          {/* Summary + analytics metrics */}
           <div className="grid grid-cols-4 lg:grid-cols-8 gap-3 mb-6">
             <MetricCard label="Total Value" value={fmt$(totalValue)} />
             <MetricCard label="Total P&L" value={fmt$(totalPnl)} color={totalPnl >= 0 ? 'text-accent-green' : 'text-accent-red'} />
@@ -457,7 +431,6 @@ export default function Portfolio() {
 
           <div className="grid grid-cols-[1fr_320px] gap-6">
             <div className="space-y-6">
-              {/* Positions table */}
               <div className="card p-0 overflow-hidden">
                 <table className="w-full text-sm">
                   <thead>
@@ -478,17 +451,15 @@ export default function Portfolio() {
                         <td className={`py-3 px-3 text-right font-mono ${p.pnl >= 0 ? 'text-accent-green' : 'text-accent-red'}`}>{p.pnl >= 0 ? '+' : ''}{fmt$(p.pnl)}</td>
                         <td className="py-3 px-3 text-right"><span className={p.pnl >= 0 ? 'badge-up' : 'badge-down'}>{fmtPct(p.pnlPct)}</span></td>
                         <td className="py-3 px-3 text-right font-mono text-slate-500 text-xs">{p.weight.toFixed(1)}%</td>
-                        <td className="py-3 px-3 text-right"><button onClick={() => setPositions((prev) => prev.filter((x) => x.symbol !== p.symbol))} className="text-slate-600 hover:text-accent-red transition-colors p-1 opacity-0 group-hover:opacity-100"><Trash2 size={12} /></button></td>
+                        <td className="py-3 px-3 text-right"><button onClick={() => removePosition(p.symbol)} className="text-slate-600 hover:text-accent-red transition-colors p-1 opacity-0 group-hover:opacity-100"><Trash2 size={12} /></button></td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
               </div>
 
-              {/* Performance chart with timeframe selector */}
               <PerformanceChart positions={positions} />
 
-              {/* Monte Carlo */}
               {analytics?.monteCarlo && (
                 <div className="card">
                   <div className="flex items-center gap-2 mb-3">
@@ -505,7 +476,6 @@ export default function Portfolio() {
               )}
             </div>
 
-            {/* Right: pie + breakdown */}
             <div className="space-y-4">
               <div className="card">
                 <div className="text-xs font-semibold text-slate-400 mb-4 uppercase tracking-widest">Allocation</div>

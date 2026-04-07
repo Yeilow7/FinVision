@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Plus, X, Star } from 'lucide-react';
 import { api } from '../api/client';
 import { useAppStore } from '../store';
+import { useWatchlist } from '../hooks/useWatchlist';
 import type { Quote } from '../types';
 
 function formatPrice(p: number): string {
@@ -11,7 +12,8 @@ function formatPrice(p: number): string {
 }
 
 export default function WatchlistSidebar() {
-  const { watchlist, setWatchlist, selectedTicker, setSelectedTicker } = useAppStore();
+  const { selectedTicker, setSelectedTicker } = useAppStore();
+  const { symbols, addSymbol, removeSymbol } = useWatchlist();
   const [quotes, setQuotes] = useState<Record<string, Quote>>({});
   const [adding, setAdding] = useState(false);
   const [input, setInput] = useState('');
@@ -19,9 +21,9 @@ export default function WatchlistSidebar() {
   const [flashMap, setFlashMap] = useState<Record<string, 'up' | 'down' | null>>({});
 
   useEffect(() => {
-    if (watchlist.length === 0) return;
+    if (symbols.length === 0) return;
     const fetch = () =>
-      api.getMultiQuote(watchlist).then((data) => {
+      api.getMultiQuote(symbols).then((data) => {
         const map: Record<string, Quote> = {};
         const flashes: Record<string, 'up' | 'down' | null> = {};
         data.forEach((q) => {
@@ -42,18 +44,14 @@ export default function WatchlistSidebar() {
     fetch();
     const id = setInterval(fetch, 10_000);
     return () => clearInterval(id);
-  }, [watchlist]);
+  }, [symbols]);
 
-  const addSymbol = () => {
+  const handleAdd = () => {
     const sym = input.toUpperCase().trim();
-    if (!sym || watchlist.includes(sym)) { setInput(''); setAdding(false); return; }
-    setWatchlist((prev) => [...prev, sym]);
+    if (!sym || symbols.includes(sym)) { setInput(''); setAdding(false); return; }
+    addSymbol(sym);
     setInput('');
     setAdding(false);
-  };
-
-  const removeSymbol = (sym: string) => {
-    setWatchlist((prev) => prev.filter((s) => s !== sym));
   };
 
   return (
@@ -82,7 +80,7 @@ export default function WatchlistSidebar() {
             value={input}
             onChange={(e) => setInput(e.target.value.toUpperCase())}
             onKeyDown={(e) => {
-              if (e.key === 'Enter') addSymbol();
+              if (e.key === 'Enter') handleAdd();
               if (e.key === 'Escape') { setAdding(false); setInput(''); }
             }}
           />
@@ -91,10 +89,10 @@ export default function WatchlistSidebar() {
 
       {/* List */}
       <div className="flex-1 overflow-y-auto">
-        {watchlist.length === 0 && (
+        {symbols.length === 0 && (
           <div className="text-slate-600 text-xs text-center py-6">Empty watchlist</div>
         )}
-        {watchlist.map((sym) => {
+        {symbols.map((sym) => {
           const q = quotes[sym];
           const up = q ? q.changePercent >= 0 : true;
           const active = sym === selectedTicker;

@@ -1,11 +1,9 @@
 import { useState } from 'react';
 import { Plus, Trash2, TrendingUp, TrendingDown, Star, RefreshCw } from 'lucide-react';
 import { api } from '../api/client';
-import { useLocalStorage } from '../hooks/useLocalStorage';
+import { useWatchlist } from '../hooks/useWatchlist';
 import { usePolling } from '../hooks/usePolling';
 import type { Quote } from '../types';
-
-const DEFAULT_SYMBOLS = ['AAPL', 'MSFT', 'GOOGL', 'BTC-USD', 'ETH-USD'];
 
 function formatVolume(v: number) {
   if (v >= 1e9) return `${(v / 1e9).toFixed(2)}B`;
@@ -20,7 +18,7 @@ function formatPrice(p: number) {
 }
 
 export default function Watchlist() {
-  const [symbols, setSymbols] = useLocalStorage<string[]>('watchlist_symbols', DEFAULT_SYMBOLS);
+  const { symbols, addSymbol, removeSymbol } = useWatchlist();
   const [quotes, setQuotes] = useState<Record<string, Quote>>({});
   const [loading, setLoading] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
@@ -46,16 +44,16 @@ export default function Watchlist() {
 
   usePolling(fetchAll, 30_000, symbols.length > 0);
 
-  const addSymbol = () => {
+  const handleAdd = () => {
     const sym = inputVal.toUpperCase().trim();
     if (!sym) return;
     if (symbols.includes(sym)) { setInputVal(''); return; }
-    setSymbols((prev) => [...prev, sym]);
+    addSymbol(sym);
     setInputVal('');
   };
 
-  const removeSymbol = (sym: string) => {
-    setSymbols((prev) => prev.filter((s) => s !== sym));
+  const handleRemove = (sym: string) => {
+    removeSymbol(sym);
     setQuotes((prev) => {
       const copy = { ...prev };
       delete copy[sym];
@@ -95,7 +93,7 @@ export default function Watchlist() {
 
       {error && (
         <div className="card border-accent-red/30 bg-accent-red/5 text-accent-red text-sm mb-4">
-          {error} — ensure backend is running at localhost:3001
+          {error} — ensure backend is running
         </div>
       )}
 
@@ -107,9 +105,9 @@ export default function Watchlist() {
             placeholder="Add symbol (e.g. TSLA, NVDA, SOL-USD)"
             value={inputVal}
             onChange={(e) => setInputVal(e.target.value.toUpperCase())}
-            onKeyDown={(e) => e.key === 'Enter' && addSymbol()}
+            onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
           />
-          <button onClick={addSymbol} className="btn-primary flex items-center gap-1.5">
+          <button onClick={handleAdd} className="btn-primary flex items-center gap-1.5">
             <Plus size={14} />
             Add
           </button>
@@ -186,7 +184,7 @@ export default function Watchlist() {
                     </td>
                     <td className="py-3.5 px-4 text-right">
                       <button
-                        onClick={() => removeSymbol(sym)}
+                        onClick={() => handleRemove(sym)}
                         className="text-slate-700 hover:text-accent-red transition-colors opacity-0 group-hover:opacity-100 p-1"
                       >
                         <Trash2 size={12} />
@@ -207,7 +205,6 @@ export default function Watchlist() {
             .filter((s) => quotes[s]?.marketCap)
             .map((sym) => {
               const q = quotes[sym]!;
-              const up = q.changePercent >= 0;
               const mcap = q.marketCap!;
               const mcapStr =
                 mcap >= 1e12

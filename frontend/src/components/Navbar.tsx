@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom';
-import { Activity, Monitor, Briefcase, BarChart2, Globe, Newspaper, Search, Command, Sun, Moon, Calendar, LayoutGrid } from 'lucide-react';
+import { Activity, Monitor, Briefcase, BarChart2, Globe, Newspaper, Search, Command, Sun, Moon, Calendar, LayoutGrid, LogOut } from 'lucide-react';
 import { useAppStore } from '../store';
+import { useAuth } from '../contexts/AuthContext';
 import AlertSystem from './AlertSystem';
 
 const NAV_ITEMS = [
@@ -15,6 +16,7 @@ const NAV_ITEMS = [
 
 export default function Navbar() {
   const { setSearchOpen, theme, toggleTheme } = useAppStore();
+  const { signOut, user } = useAuth();
 
   return (
     <nav className="h-10 bg-navy-900 border-b border-navy-600 flex items-center px-4 shrink-0">
@@ -72,6 +74,20 @@ export default function Navbar() {
             <kbd className="bg-navy-600 px-1 rounded text-[9px]">K</kbd>
           </div>
         </button>
+
+        {/* User + Logout */}
+        {user && (
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] text-slate-600 font-mono hidden lg:inline truncate max-w-[120px]">{user.email}</span>
+            <button
+              onClick={signOut}
+              className="p-1.5 rounded-lg text-slate-500 hover:text-accent-red hover:bg-navy-700 transition-all"
+              title="Sign out"
+            >
+              <LogOut size={14} />
+            </button>
+          </div>
+        )}
       </div>
     </nav>
   );

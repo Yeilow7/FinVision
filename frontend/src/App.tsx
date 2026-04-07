@@ -2,6 +2,7 @@ import { useEffect, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
 import { useAppStore } from './store';
+import { useAuth } from './contexts/AuthContext';
 
 const Terminal = lazy(() => import('./pages/Terminal'));
 const Portfolio = lazy(() => import('./pages/Portfolio'));
@@ -10,6 +11,7 @@ const Markets = lazy(() => import('./pages/Markets'));
 const News = lazy(() => import('./pages/News'));
 const Calendar = lazy(() => import('./pages/Calendar'));
 const Heatmap = lazy(() => import('./pages/Heatmap'));
+const Login = lazy(() => import('./pages/Login'));
 
 function PageLoader() {
   return (
@@ -47,12 +49,23 @@ function KeyboardShortcuts() {
   return null;
 }
 
+function ProtectedRoute({ children }: { children: React.ReactNode }) {
+  const { user, loading } = useAuth();
+  if (loading) return <PageLoader />;
+  if (!user) return <Navigate to="/login" replace />;
+  return <>{children}</>;
+}
+
 export default function App() {
   return (
     <BrowserRouter>
       <KeyboardShortcuts />
       <Routes>
-        <Route element={<Layout />}>
+        {/* Public route */}
+        <Route path="login" element={<Suspense fallback={<PageLoader />}><Login /></Suspense>} />
+
+        {/* Protected routes */}
+        <Route element={<ProtectedRoute><Layout /></ProtectedRoute>}>
           <Route index element={<Navigate to="/terminal" replace />} />
           <Route path="terminal" element={<Suspense fallback={<PageLoader />}><Terminal /></Suspense>} />
           <Route path="portfolio" element={<Suspense fallback={<PageLoader />}><Portfolio /></Suspense>} />
