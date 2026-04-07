@@ -8,7 +8,7 @@ import {
 } from 'recharts';
 import { Plus, Trash2, TrendingUp, TrendingDown, DollarSign } from 'lucide-react';
 import { api } from '../api/client';
-import { usePositions } from '../hooks/usePositions';
+import { useLocalStorage } from '../hooks/useLocalStorage';
 import { usePolling } from '../hooks/usePolling';
 import type { PortfolioPosition, Quote } from '../types';
 
@@ -49,7 +49,7 @@ const CustomTooltip = ({ active, payload }: any) => {
 };
 
 export default function Portfolio() {
-  const { positions, addPosition, removePosition } = usePositions();
+  const [positions, setPositions] = useLocalStorage<PortfolioPosition[]>('portfolio_positions', []);
   const [quotes, setQuotes] = useState<Record<string, Quote>>({});
   const [loading, setLoading] = useState(false);
 
@@ -77,7 +77,7 @@ export default function Portfolio() {
   usePolling(fetchQuotes, 30_000, positions.length > 0);
   useEffect(() => { fetchQuotes(); }, [positions.length]);
 
-  const handleAdd = () => {
+  const addPosition = () => {
     const sym = formSymbol.toUpperCase().trim();
     const shares = parseFloat(formShares);
     const avg = parseFloat(formAvgPrice);
@@ -87,10 +87,32 @@ export default function Portfolio() {
     if (isNaN(avg) || avg <= 0) return setFormError('Enter valid price');
 
     setFormError('');
-    addPosition(sym, shares, avg);
+    const existing = positions.findIndex((p) => p.symbol === sym);
+    if (existing >= 0) {
+      // Update existing position (average down/up)
+      const old = positions[existing];
+      const totalCost = old.shares * old.avgPrice + shares * avg;
+      const totalShares = old.shares + shares;
+      setPositions((prev) =>
+        prev.map((p, i) =>
+          i === existing ? { ...p, shares: totalShares, avgPrice: totalCost / totalShares } : p
+        )
+      );
+    } else {
+      setPositions((prev) => [...prev, { symbol: sym, shares, avgPrice: avg }]);
+    }
     setFormSymbol('');
     setFormShares('');
     setFormAvgPrice('');
+  };
+
+  const removePosition = (symbol: string) => {
+    setPositions((prev) => prev.filter((p) => p.symbol !== symbol));
+    setQuotes((prev) => {
+      const copy = { ...prev };
+      delete copy[symbol];
+      return copy;
+    });
   };
 
   // Compute enriched positions
@@ -171,7 +193,7 @@ export default function Portfolio() {
                 placeholder="Symbol"
                 value={formSymbol}
                 onChange={(e) => setFormSymbol(e.target.value.toUpperCase())}
-                onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+                onKeyDown={(e) => e.key === 'Enter' && addPosition()}
               />
               <input
                 className="input-field w-28"
@@ -181,7 +203,7 @@ export default function Portfolio() {
                 step="any"
                 value={formShares}
                 onChange={(e) => setFormShares(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+                onKeyDown={(e) => e.key === 'Enter' && addPosition()}
               />
               <input
                 className="input-field w-36"
@@ -191,9 +213,9 @@ export default function Portfolio() {
                 step="any"
                 value={formAvgPrice}
                 onChange={(e) => setFormAvgPrice(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+                onKeyDown={(e) => e.key === 'Enter' && addPosition()}
               />
-              <button onClick={handleAdd} className="btn-primary flex items-center gap-1.5">
+              <button onClick={addPosition} className="btn-primary flex items-center gap-1.5">
                 <Plus size={14} />
                 Add
               </button>
@@ -213,7 +235,7 @@ export default function Portfolio() {
                   </tr>
                 </thead>
                 <tbody>
-                  {enriched.map((p) => (
+                  {enriched.map((p, i) => (
                     <tr key={p.symbol} className="border-b border-navy-700 hover:bg-navy-700/40 transition-colors">
                       <td className="py-3 px-3">
                         <div className="font-mono font-bold text-accent-cyan">{p.symbol}</div>
@@ -267,7 +289,7 @@ export default function Portfolio() {
                     paddingAngle={2}
                     dataKey="value"
                   >
-                    {pieData.map((entry) => (
+                    {pieData.map((entry, i) => (
                       <Cell key={entry.symbol} fill={entry.fill} opacity={0.9} />
                     ))}
                   </Pie>
@@ -275,7 +297,7 @@ export default function Portfolio() {
                 </PieChart>
               </ResponsiveContainer>
               <div className="space-y-2 mt-2">
-                {pieData.map((d) => (
+                {pieData.map((d, i) => (
                   <div key={d.symbol} className="flex items-center justify-between text-xs">
                     <div className="flex items-center gap-2">
                       <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: d.fill }} />

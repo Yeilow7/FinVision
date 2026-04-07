@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from 'recharts';
 import { Plus, Briefcase, X } from 'lucide-react';
 import { api } from '../api/client';
-import { usePositions } from '../hooks/usePositions';
+import { useAppStore } from '../store';
 import type { Quote, PortfolioPosition } from '../types';
 
 const COLORS = ['#00D4FF', '#00D4AA', '#FFD700', '#FF4757', '#A855F7', '#F97316', '#EC4899'];
@@ -31,7 +31,7 @@ const CustomTooltip = ({ active, payload }: any) => {
 };
 
 export default function PortfolioSidebar() {
-  const { positions, addPosition, removePosition } = usePositions();
+  const { positions, setPositions } = useAppStore();
   const [quotes, setQuotes] = useState<Record<string, Quote>>({});
   const [showForm, setShowForm] = useState(false);
   const [sym, setSym] = useState('');
@@ -40,23 +40,37 @@ export default function PortfolioSidebar() {
 
   useEffect(() => {
     if (positions.length === 0) return;
-    const fetch = () =>
+    api.getMultiQuote(positions.map((p) => p.symbol)).then((data) => {
+      const map: Record<string, Quote> = {};
+      data.forEach((q) => { map[q.symbol] = q; });
+      setQuotes(map);
+    }).catch(() => {});
+    const id = setInterval(() => {
       api.getMultiQuote(positions.map((p) => p.symbol)).then((data) => {
         const map: Record<string, Quote> = {};
         data.forEach((q) => { map[q.symbol] = q; });
         setQuotes(map);
       }).catch(() => {});
-    fetch();
-    const id = setInterval(fetch, 30_000);
+    }, 30_000);
     return () => clearInterval(id);
   }, [positions.length]);
 
-  const handleAdd = () => {
+  const addPosition = () => {
     const s = sym.toUpperCase().trim();
     const sh = parseFloat(shares);
     const pr = parseFloat(price);
     if (!s || isNaN(sh) || sh <= 0 || isNaN(pr) || pr <= 0) return;
-    addPosition(s, sh, pr);
+    const existing = positions.findIndex((p) => p.symbol === s);
+    if (existing >= 0) {
+      setPositions((prev) => prev.map((p, i) => {
+        if (i !== existing) return p;
+        const total = p.shares * p.avgPrice + sh * pr;
+        const totalSh = p.shares + sh;
+        return { ...p, shares: totalSh, avgPrice: total / totalSh };
+      }));
+    } else {
+      setPositions((prev) => [...prev, { symbol: s, shares: sh, avgPrice: pr }]);
+    }
     setSym(''); setShares(''); setPrice('');
     setShowForm(false);
   };
@@ -97,11 +111,11 @@ export default function PortfolioSidebar() {
       {/* Add form */}
       {showForm && (
         <div className="px-2 py-2 border-b border-navy-600 space-y-1.5">
-          <input className="input-field text-xs py-1.5" placeholder="Symbol" value={sym} onChange={(e) => setSym(e.target.value.toUpperCase())} onKeyDown={(e) => e.key === 'Enter' && handleAdd()} />
-          <input className="input-field text-xs py-1.5" placeholder="Shares" type="number" min="0" step="any" value={shares} onChange={(e) => setShares(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAdd()} />
-          <input className="input-field text-xs py-1.5" placeholder="Avg Price" type="number" min="0" step="any" value={price} onChange={(e) => setPrice(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleAdd()} />
+          <input className="input-field text-xs py-1.5" placeholder="Symbol" value={sym} onChange={(e) => setSym(e.target.value.toUpperCase())} onKeyDown={(e) => e.key === 'Enter' && addPosition()} />
+          <input className="input-field text-xs py-1.5" placeholder="Shares" type="number" min="0" step="any" value={shares} onChange={(e) => setShares(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addPosition()} />
+          <input className="input-field text-xs py-1.5" placeholder="Avg Price" type="number" min="0" step="any" value={price} onChange={(e) => setPrice(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && addPosition()} />
           <div className="flex gap-1.5">
-            <button onClick={handleAdd} className="flex-1 btn-primary text-xs py-1">Add</button>
+            <button onClick={addPosition} className="flex-1 btn-primary text-xs py-1">Add</button>
             <button onClick={() => setShowForm(false)} className="btn-ghost text-xs py-1"><X size={12} /></button>
           </div>
         </div>
@@ -126,7 +140,7 @@ export default function PortfolioSidebar() {
               <ResponsiveContainer width="100%" height={90}>
                 <PieChart>
                   <Pie data={pieData} cx="50%" cy="50%" innerRadius={28} outerRadius={42} paddingAngle={2} dataKey="value">
-                    {pieData.map((entry) => (
+                    {pieData.map((entry, i) => (
                       <Cell key={entry.symbol} fill={entry.fill} opacity={0.85} />
                     ))}
                   </Pie>
@@ -162,7 +176,7 @@ export default function PortfolioSidebar() {
                   </div>
                 </div>
                 <button
-                  onClick={() => removePosition(p.symbol)}
+                  onClick={() => setPositions((prev) => prev.filter((pos) => pos.symbol !== p.symbol))}
                   className="text-slate-700 hover:text-accent-red opacity-0 group-hover:opacity-100 transition-all ml-1 p-0.5"
                 >
                   <X size={10} />
