@@ -146,6 +146,13 @@ Zustand store at `frontend/src/store/index.ts`, persisted under `finvision-store
 
 Note: `vite build` skips `tsc` (commit `6a673f5` unblocked Vercel deploys). The frontend type-check is therefore a manual step Claude must run.
 
+### Hooks and their limits
+
+- `.claude/hooks/block-secrets.sh` (PreToolUse) — **assistant-visible.** Blocks Edit/Write/MultiEdit on `.env` files. PreToolUse exit-2 + stderr reliably surfaces to the assistant as a tool-error block. Verified working.
+- `.claude/hooks/verify-on-src-edit.sh` (PostToolUse) — **user-terminal-only, NOT assistant-visible** in CLI v2.1.141. Runs `tsc --noEmit` after substantive edits in `backend/src` or `frontend/src` and emits both an stderr summary and a JSON-to-stdout block (`decision: "block"` + `reason` + `hookSpecificOutput.additionalContext`). The hook is correct per docs, but neither channel surfaces to the assistant — only the user sees the output in their terminal.
+- **Implication for Claude:** do not treat the absence of a PostToolUse error block as proof that tsc passed. Run the verification loop explicitly (`npx tsc --noEmit` in the affected package) before claiming any change under `backend/src` or `frontend/src` done. The `verify-loop` subagent is the primary guardrail; the PostToolUse hook is a secondary user-side signal only.
+- **Discrepancy note for future re-check.** Docs at `https://code.claude.com/docs/en/hooks.md` describe PostToolUse exit-2 stderr forwarding and structured `decision: "block"` JSON output as assistant-visible. Empirical test on **2026-05-14** with **Claude Code CLI v2.1.141** confirmed neither works for PostToolUse on Edit. Re-test on future CLI upgrades; if the channel starts working, this section can be revised.
+
 ---
 
 ## Anthropic SDK usage (backend)
