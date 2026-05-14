@@ -1,4 +1,4 @@
-# CLAUDE.md — FinVision
+# CLAUDE.md — Brokerly
 
 Working agreement for Claude Code on this repo. Read in full before non-trivial changes.
 
@@ -15,7 +15,7 @@ Working agreement for Claude Code on this repo. Read in full before non-trivial 
 
 ## Project
 
-FinVision — Bloomberg-style financial terminal. Monorepo coordinated by `concurrently` at the repo root (no workspaces). Frontend on `5173`, backend on `3001`.
+Brokerly — Bloomberg-style financial terminal. Monorepo coordinated by `concurrently` at the repo root (no workspaces). Frontend on `5173`, backend on `3001`.
 
 **Planned next (not landed):** Supabase auth + database. Two recent commits (`b896eff`, `b9afdd1`) carry the message but no code/deps shipped. If asked about auth, treat as upcoming, not present.
 
@@ -27,7 +27,7 @@ FinVision — Bloomberg-style financial terminal. Monorepo coordinated by `concu
 - React 18 + Vite 5 + TypeScript 5.5 strict (`noEmit`)
 - Tailwind 3 with custom palette
 - React Router v7, lazy-loaded routes
-- Zustand (persisted via `localStorage`, key `finvision-store`)
+- Zustand (persisted via `localStorage`, key `brokerly-store`)
 - TradingView lightweight-charts, Recharts, d3, lucide-react
 - PWA service worker registered in `main.tsx`
 - `axios` is in deps but **unused** — code uses native `fetch`
@@ -131,7 +131,7 @@ Only use the existing tokens. No new hex values without asking.
 
 ### State
 
-Zustand store at `frontend/src/store/index.ts`, persisted under `finvision-store`. Watchlist, positions, selected ticker, recent searches, theme, alerts all live there. Add new fields here rather than spinning up new contexts.
+Zustand store at `frontend/src/store/index.ts`, persisted under `brokerly-store`. Watchlist, positions, selected ticker, recent searches, theme, alerts all live there. Add new fields here rather than spinning up new contexts.
 
 ---
 

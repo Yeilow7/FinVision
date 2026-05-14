@@ -1,4 +1,4 @@
-# FinVision — Financial Dashboard
+# Brokerly — Financial Dashboard
 
 A full-stack fintech dashboard with live market data, interactive charts, portfolio tracking, and a dark neon theme.
 

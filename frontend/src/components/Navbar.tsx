@@ -23,7 +23,7 @@ export default function Navbar() {
         <div className="w-6 h-6 rounded-md bg-gradient-to-br from-accent-cyan to-accent-green flex items-center justify-center">
           <Activity size={12} className="text-navy-950" strokeWidth={2.5} />
         </div>
-        <span className="text-sm font-bold text-white tracking-wide hidden sm:block">FinVision</span>
+        <span className="text-sm font-bold text-white tracking-wide hidden sm:block">Brokerly</span>
       </NavLink>
 
       {/* Nav links */}

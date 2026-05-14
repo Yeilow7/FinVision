@@ -1,4 +1,4 @@
-const CACHE_NAME = 'finvision-v1';
+const CACHE_NAME = 'brokerly-v1';
 const OFFLINE_URL = '/offline.html';
 
 self.addEventListener('install', (event) => {

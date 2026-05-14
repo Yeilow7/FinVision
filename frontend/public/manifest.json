@@ -1,6 +1,6 @@
 {
-  "name": "FinVision Terminal",
-  "short_name": "FinVision",
+  "name": "Brokerly Terminal",
+  "short_name": "Brokerly",
   "description": "Professional-grade financial terminal with live market data, charts, and AI analysis",
   "start_url": "/",
   "display": "standalone",

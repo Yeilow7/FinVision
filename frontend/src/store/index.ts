@@ -67,7 +67,7 @@ export const useAppStore = create<AppStore>()(
       })),
     }),
     {
-      name: 'finvision-store',
+      name: 'brokerly-store',
       partialize: (state) => ({
         selectedTicker: state.selectedTicker,
         watchlist: state.watchlist,

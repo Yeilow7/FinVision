@@ -84,7 +84,7 @@ async function yfFetch(url: string, extraHeaders?: Record<string, string>): Prom
 import { execSync } from 'child_process';
 
 let yfCrumb: string | null = null;
-const yfCookieJar = '/tmp/finvision_yf_cookies';
+const yfCookieJar = '/tmp/brokerly_yf_cookies';
 let crumbFetchedAt = 0;
 let crumbPromise: Promise<void> | null = null;
 
