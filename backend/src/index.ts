@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import Anthropic from '@anthropic-ai/sdk';
+// yahoo-finance2 not used — crumb-based APIs are unreliable due to rate limiting
 
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -67,7 +68,6 @@ function resolveSymbol(input: string): { ticker: string; displayName: string | n
 // ─── Yahoo Finance HTTP helpers ───────────────────────────────────────────────
 
 const YF_BASE = 'https://query1.finance.yahoo.com';
-const YF_BASE2 = 'https://query2.finance.yahoo.com';
 const HEADERS = {
   'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
   Accept: 'application/json',
@@ -79,12 +79,12 @@ async function yfFetch(url: string, extraHeaders?: Record<string, string>): Prom
   return res.json();
 }
 
-// ─── Crumb/cookie session for v7/finance/quote (has marketCap) ────────────────
+// ─── Rich quote data via crumb-authenticated v7 API ──────────────────────────
 
 import { execSync } from 'child_process';
 
 let yfCrumb: string | null = null;
-let yfCookieJar = '/tmp/finvision_yf_cookies';
+const yfCookieJar = '/tmp/finvision_yf_cookies';
 let crumbFetchedAt = 0;
 let crumbPromise: Promise<void> | null = null;
 
@@ -93,7 +93,6 @@ async function ensureCrumb(): Promise<void> {
   if (crumbPromise) return crumbPromise;
   crumbPromise = (async () => {
     try {
-      // Use curl for cookie handling — avoids Node fetch header overflow issues
       execSync(`curl -s -c ${yfCookieJar} "https://fc.yahoo.com" -o /dev/null`, { timeout: 10_000 });
       const crumbText = execSync(
         `curl -s -b ${yfCookieJar} "https://query2.finance.yahoo.com/v1/test/getcrumb"`,
@@ -108,40 +107,34 @@ async function ensureCrumb(): Promise<void> {
       if (isValid) {
         yfCrumb = crumbText;
         crumbFetchedAt = Date.now();
+        console.log('[backend] Yahoo crumb acquired');
+      } else {
+        console.log('[backend] Yahoo crumb invalid:', crumbText.slice(0, 60));
       }
-    } catch { /* curl failed or timed out — rich data just won't be available */ }
+    } catch { /* curl failed or timed out */ }
     finally { crumbPromise = null; }
   })();
   return crumbPromise;
 }
 
-/** Parse abbreviated market cap string like "3.761T" → number */
-function parseAbbrev(s: string): number | null {
-  if (!s) return null;
-  const m = s.match(/([\d,.]+)\s*([TBMK])?/i);
-  if (!m) return null;
-  const num = parseFloat(m[1].replace(/,/g, ''));
-  const suffix = (m[2] || '').toUpperCase();
-  if (suffix === 'T') return num * 1e12;
-  if (suffix === 'B') return num * 1e9;
-  if (suffix === 'M') return num * 1e6;
-  if (suffix === 'K') return num * 1e3;
-  return num;
-}
-
-/** Fetch rich quote data via v7 API with curl cookie jar. Cached 1h. */
+/** Fetch rich quote data via v7 API (crumb auth). Falls back to empty if unavailable. Cached 5min. */
 async function fetchRichQuotes(symbols: string[]): Promise<Record<string, any>> {
   const cacheKey = `rich:${symbols.sort().join(',')}`;
-  return cached(cacheKey, 3600_000, async () => {
+  return cached(cacheKey, 300_000, async () => {
     await ensureCrumb();
     if (!yfCrumb) return {};
     try {
-      const url = `${YF_BASE2}/v7/finance/quote?symbols=${symbols.map(encodeURIComponent).join(',')}&crumb=${encodeURIComponent(yfCrumb)}`;
+      const url = `https://query2.finance.yahoo.com/v7/finance/quote?symbols=${symbols.map(encodeURIComponent).join(',')}&crumb=${encodeURIComponent(yfCrumb)}`;
       const raw = execSync(
         `curl -s -b ${yfCookieJar} "${url}"`,
         { timeout: 15_000, maxBuffer: 5 * 1024 * 1024 }
       ).toString();
       const data = JSON.parse(raw);
+      if (data?.quoteResponse?.error) {
+        // Crumb expired or invalid — reset so next call retries
+        yfCrumb = null;
+        return {};
+      }
       const results = data?.quoteResponse?.result ?? [];
       const map: Record<string, any> = {};
       results.forEach((r: any) => { map[r.symbol] = r; });
@@ -183,7 +176,7 @@ async function fetchQuote(symbol: string, displayName?: string | null, richOverr
         (((meta.regularMarketPrice ?? 0) - (meta.previousClose ?? meta.chartPreviousClose ?? 0)) /
           (meta.previousClose ?? meta.chartPreviousClose ?? 1)) * 100,
       volume: meta.regularMarketVolume ?? 0,
-      marketCap: r.marketCap ?? null,
+      marketCap: r.marketCap ?? r.regularMarketCap ?? null,
       dayHigh: meta.regularMarketDayHigh ?? r.regularMarketDayHigh ?? null,
       dayLow: meta.regularMarketDayLow ?? r.regularMarketDayLow ?? null,
       fiftyTwoWeekHigh: meta.fiftyTwoWeekHigh ?? r.fiftyTwoWeekHigh ?? null,
@@ -956,6 +949,36 @@ app.get('/api/heatmap/:market', async (req, res) => {
       }).filter((s) => s.price > 0);
     });
     res.json(data);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Debug: raw quote response ───────────────────────────────────────────────
+
+app.get('/api/debug/quote/:symbol', async (req, res) => {
+  const symbol = req.params.symbol;
+  try {
+    // v7 rich quote via crumb
+    const richData = await fetchRichQuotes([symbol]);
+    const richQuote = richData[symbol] || Object.values(richData)[0] || null;
+
+    // v8 chart meta
+    const chartUrl = `${YF_BASE}/v8/finance/chart/${encodeURIComponent(symbol)}?range=1d&interval=1d&includePrePost=false`;
+    const chartData = await yfFetch(chartUrl);
+    const meta = chartData?.chart?.result?.[0]?.meta ?? null;
+
+    // Final merged quote via our fetchQuote
+    cache.delete(`quote:${symbol}`); // bypass cache for debug
+    const merged = await fetchQuote(symbol);
+
+    res.json({
+      crumbStatus: { hasCrumb: !!yfCrumb, crumbAge: yfCrumb ? Date.now() - crumbFetchedAt : null },
+      v7RichQuote: richQuote,
+      v7RichKeys: richQuote ? Object.keys(richQuote) : [],
+      chartMeta: meta,
+      mergedResult: merged,
+    });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
