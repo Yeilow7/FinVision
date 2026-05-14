@@ -25,3 +25,6 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# Claude Code — local-only settings (permissions, machine-specific overrides)
+.claude/settings.local.json
